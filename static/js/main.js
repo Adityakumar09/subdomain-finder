@@ -1,32 +1,40 @@
-class AdvancedSubdomainFinder {
+class SubHunterPro {
     constructor() {
         this.isScanning = false;
         this.currentResults = [];
         this.filteredResults = [];
         this.scanStartTime = null;
         this.currentSort = 'subdomain';
+        this.totalDomains = 0;
+        this.scannedDomains = 0;
+        this.foundDomains = 0;
+        this.vantaEffect = null;
+        
         this.initializeVanta();
         this.bindEvents();
     }
 
     initializeVanta() {
-        // Enhanced Vanta.js NET effect
-        VANTA.NET({
-            el: "#vanta-bg",
-            mouseControls: true,
-            touchControls: true,
-            gyroControls: false,
-            minHeight: 200.00,
-            minWidth: 200.00,
-            scale: 1.00,
-            scaleMobile: 1.00,
-            color: 0x00ffff,
-            backgroundColor: 0x0a0a0a,
-            points: 20.00,
-            maxDistance: 30.00,
-            spacing: 18.00,
-            showDots: true
-        });
+        try {
+            this.vantaEffect = VANTA.DOTS({
+                el: "#vanta-bg",
+                mouseControls: true,
+                touchControls: true,
+                gyroControls: false,
+                minHeight: 200.00,
+                minWidth: 200.00,
+                scale: 1.00,
+                scaleMobile: 0.8,
+                color: 0x00ffff,
+                color2: 0xff00ff,
+                backgroundColor: 0x0a0a0a,
+                size: 3.0,
+                spacing: 25.0,
+                showLines: true
+            });
+        } catch (error) {
+            console.warn('Vanta.js failed to initialize:', error);
+        }
     }
 
     bindEvents() {
@@ -42,10 +50,17 @@ class AdvancedSubdomainFinder {
         domainInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.startAdvancedScan();
         });
-        exportBtn.addEventListener('click', () => this.exportResults());
-        filterBtn.addEventListener('click', () => this.toggleFilters());
-        sortBtn.addEventListener('click', () => this.sortResults());
         
+        // Export button event handler
+        exportBtn.addEventListener('click', () => this.exportResults());
+        
+        // Filter and sort handlers
+        if (filterBtn) {
+            filterBtn.addEventListener('click', () => this.toggleFilters());
+        }
+        if (sortBtn) {
+            sortBtn.addEventListener('click', () => this.sortResults());
+        }
         if (searchFilter) {
             searchFilter.addEventListener('input', () => this.applyFilters());
         }
@@ -53,7 +68,6 @@ class AdvancedSubdomainFinder {
             statusFilter.addEventListener('change', () => this.applyFilters());
         }
 
-        // Auto-focus domain input
         domainInput.focus();
     }
 
@@ -69,17 +83,16 @@ class AdvancedSubdomainFinder {
             return;
         }
 
-        if (!this.isValidDomain(domain)) {
-            this.showNotification('Please enter a valid domain', 'error');
-            return;
-        }
-
         this.isScanning = true;
         this.scanStartTime = Date.now();
+        this.scannedDomains = 0;
+        this.foundDomains = 0;
+
         this.updateScanButton(true);
         this.showStatsSection();
         this.showProgressSection();
         this.hideResultsSection();
+        this.clearLiveFeed();
 
         try {
             const response = await fetch('/scan', {
@@ -98,12 +111,34 @@ class AdvancedSubdomainFinder {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            const data = await response.json();
-            this.handleScanResults(data);
+            // Handle streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            this.handleStreamingUpdate(data);
+                        } catch (e) {
+                            console.error('Error parsing JSON:', e);
+                        }
+                    }
+                }
+            }
 
         } catch (error) {
             console.error('Scan error:', error);
-            this.showNotification('Advanced scan failed. Please try again.', 'error');
+            this.showNotification('Scan failed. Please try again.', 'error');
         } finally {
             this.isScanning = false;
             this.updateScanButton(false);
@@ -111,9 +146,67 @@ class AdvancedSubdomainFinder {
         }
     }
 
-    isValidDomain(domain) {
-        const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
-        return domainRegex.test(domain.replace(/^https?:\/\//, ''));
+    handleStreamingUpdate(data) {
+        if (data.type === 'progress') {
+            this.updateProgress(data);
+        } else if (data.type === 'result') {
+            this.addLiveResult(data);
+        } else if (data.type === 'complete') {
+            this.handleScanComplete(data);
+        }
+    }
+
+    updateProgress(data) {
+        this.scannedDomains = data.scanned || 0;
+        this.totalDomains = data.total || 0;
+        this.foundDomains = data.found || 0;
+
+        const progress = this.totalDomains > 0 ? (this.scannedDomains / this.totalDomains) * 100 : 0;
+        
+        document.getElementById('progress-fill').style.width = `${progress}%`;
+        document.getElementById('progress-percentage').textContent = `${Math.floor(progress)}%`;
+        document.getElementById('domains-remaining').textContent = `${this.totalDomains - this.scannedDomains} remaining`;
+        document.getElementById('scanned-count').textContent = this.scannedDomains.toLocaleString();
+        document.getElementById('found-count').textContent = this.foundDomains.toLocaleString();
+    }
+
+    addLiveResult(result) {
+        const liveResults = document.getElementById('live-results');
+        const resultItem = document.createElement('div');
+        resultItem.className = 'live-result-item';
+        resultItem.innerHTML = `
+            <span style="color: #00ff00">[FOUND]</span> 
+            <span style="color: #00ffff">${result.subdomain}</span> 
+            <span style="color: #ffff00">[${result.status_code}]</span>
+        `;
+        
+        liveResults.insertBefore(resultItem, liveResults.firstChild);
+        
+        while (liveResults.children.length > 10) {
+            liveResults.removeChild(liveResults.lastChild);
+        }
+    }
+
+    handleScanComplete(data) {
+        this.currentResults = data.subdomains || [];
+        this.filteredResults = [...this.currentResults];
+
+        document.getElementById('wordlist-count').textContent = data.wordlist_size?.toLocaleString() || '0';
+        document.getElementById('scanned-count').textContent = data.total_checked?.toLocaleString() || '0';
+        document.getElementById('found-count').textContent = data.found_count?.toLocaleString() || '0';
+        
+        const successRate = data.total_checked > 0 ? 
+            ((data.found_count / data.total_checked) * 100).toFixed(2) : 0;
+        document.getElementById('success-rate').textContent = `${successRate}%`;
+
+        this.displayResults(data);
+        this.showResultsSection();
+
+        if (data.found_count > 0) {
+            this.showNotification(`🎉 SubHunter found ${data.found_count} active subdomains!`, 'success');
+        } else {
+            this.showNotification('No active subdomains found', 'info');
+        }
     }
 
     updateScanButton(scanning) {
@@ -123,12 +216,12 @@ class AdvancedSubdomainFinder {
         const btnIcon = scanBtn.querySelector('.btn-icon');
 
         if (scanning) {
-            btnText.textContent = 'Advanced Scanning...';
+            btnText.textContent = 'Hunting...';
             btnLoader.style.display = 'inline-block';
             btnIcon.className = 'fas fa-spinner fa-spin btn-icon';
             scanBtn.disabled = true;
         } else {
-            btnText.textContent = 'Start Advanced Scan';
+            btnText.textContent = 'Start Hunt';
             btnLoader.style.display = 'none';
             btnIcon.className = 'fas fa-search btn-icon';
             scanBtn.disabled = false;
@@ -136,89 +229,27 @@ class AdvancedSubdomainFinder {
     }
 
     showStatsSection() {
-        const statsSection = document.getElementById('stats-section');
-        statsSection.style.display = 'grid';
+        document.getElementById('stats-section').style.display = 'grid';
     }
 
     showProgressSection() {
-        const progressSection = document.getElementById('progress-section');
-        progressSection.style.display = 'block';
-        this.simulateAdvancedProgress();
+        document.getElementById('progress-section').style.display = 'block';
     }
 
     hideProgressSection() {
-        const progressSection = document.getElementById('progress-section');
-        progressSection.style.display = 'none';
+        document.getElementById('progress-section').style.display = 'none';
     }
 
-    simulateAdvancedProgress() {
-        const progressFill = document.getElementById('progress-fill');
-        const progressText = document.getElementById('progress-text');
-        const progressPercentage = document.getElementById('progress-percentage');
-        const currentStatus = document.getElementById('current-status');
-        const eta = document.getElementById('eta');
-        
-        let progress = 0;
-        let statusMessages = [
-            'Loading massive wordlist...',
-            'Initializing DNS resolvers...',
-            'Starting multi-threaded scan...',
-            'Probing HTTP/HTTPS endpoints...',
-            'Validating SSL certificates...',
-            'Analyzing response headers...',
-            'Extracting page titles...',
-            'Finalizing results...'
-        ];
-        let currentStatusIndex = 0;
-        
-        const interval = setInterval(() => {
-            if (!this.isScanning) {
-                clearInterval(interval);
-                return;
-            }
-            
-            progress += Math.random() * 12;
-            if (progress > 95) progress = 95;
-            
-            // Update status message
-            if (Math.random() > 0.7 && currentStatusIndex < statusMessages.length - 1) {
-                currentStatusIndex++;
-            }
-            
-            // Calculate ETA
-            const elapsed = (Date.now() - this.scanStartTime) / 1000;
-            const estimatedTotal = elapsed / (progress / 100);
-            const remaining = Math.max(0, estimatedTotal - elapsed);
-            
-            progressFill.style.width = `${progress}%`;
-            progressText.textContent = 'Advanced scanning in progress...';
-            progressPercentage.textContent = `${Math.floor(progress)}%`;
-            currentStatus.textContent = statusMessages[currentStatusIndex];
-            eta.textContent = `ETA: ${Math.floor(remaining)}s`;
-            
-        }, 800);
+    showResultsSection() {
+        document.getElementById('results-section').style.display = 'block';
     }
 
-    handleScanResults(data) {
-        this.currentResults = data.subdomains;
-        this.filteredResults = [...this.currentResults];
-        
-        // Update stats
-        document.getElementById('wordlist-count').textContent = data.wordlist_size.toLocaleString();
-        document.getElementById('scanned-count').textContent = data.total_checked.toLocaleString();
-        document.getElementById('found-count').textContent = data.found_count.toLocaleString();
-        
-        const successRate = data.total_checked > 0 ? ((data.found_count / data.total_checked) * 100).toFixed(2) : 0;
-        document.getElementById('success-rate').textContent = `${successRate}%`;
-        
-        this.displayResults(data);
-        this.showResultsSection();
-        
-        if (data.found_count > 0) {
-            this.showNotification(`🎉 Found ${data.found_count} active subdomains with advanced scanning!`, 'success');
-        } else {
-            this.showNotification('No active subdomains found with current wordlist', 'info');
-        }
+    hideResultsSection() {
+        document.getElementById('results-section').style.display = 'none';
+    }
+
+    clearLiveFeed() {
+        document.getElementById('live-results').innerHTML = '';
     }
 
     displayResults(data) {
@@ -230,266 +261,200 @@ class AdvancedSubdomainFinder {
 
         if (this.filteredResults.length === 0) {
             resultsContainer.innerHTML = `
-                <div class="no-results" style="text-align: center; padding: 3rem; color: #aaa;">
-                    <h3><i class="fas fa-search"></i> No results match your criteria</h3>
+                <div style="text-align: center; padding: 3rem; color: #aaa;">
+                    <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+                    <h3>No Results Found</h3>
                     <p>Try adjusting your filters or scanning a different domain.</p>
                 </div>
             `;
             return;
         }
 
-        this.filteredResults.forEach(subdomain => {
-            const card = this.createAdvancedSubdomainCard(subdomain);
+        this.filteredResults.forEach(result => {
+            const card = this.createSubdomainCard(result);
             resultsContainer.appendChild(card);
         });
     }
 
-    createAdvancedSubdomainCard(subdomain) {
+    createSubdomainCard(result) {
         const card = document.createElement('div');
         card.className = 'subdomain-card';
         
-        const statusClass = `status-${subdomain.status_code}`;
-        const responseTime = subdomain.response_time ? `${(subdomain.response_time * 1000).toFixed(0)}ms` : 'N/A';
-        
         card.innerHTML = `
             <div class="subdomain-header">
-                <a href="${subdomain.url}" target="_blank" class="subdomain-url">
+                <a href="${result.url}" target="_blank" class="subdomain-url">
                     <i class="fas fa-external-link-alt"></i>
-                    ${subdomain.subdomain}
+                    ${result.subdomain}
                 </a>
-                <span class="status-badge ${statusClass}">
+                <span class="status-badge status-${result.status_code}">
                     <i class="fas fa-circle"></i>
-                    ${subdomain.status_code}
+                    ${result.status_code}
                 </span>
             </div>
             <div class="subdomain-details">
                 <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-clock"></i> Response Time</span>
-                    <span class="detail-value">${responseTime}</span>
+                    <div class="detail-label">Title</div>
+                    <div class="detail-value">${result.title || 'N/A'}</div>
                 </div>
                 <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-database"></i> Content Length</span>
-                    <span class="detail-value">${this.formatBytes(subdomain.content_length)}</span>
+                    <div class="detail-label">Server</div>
+                    <div class="detail-value">${result.server || 'Unknown'}</div>
                 </div>
                 <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-server"></i> Server</span>
-                    <span class="detail-value">${subdomain.server}</span>
+                    <div class="detail-label">Content Type</div>
+                    <div class="detail-value">${result.content_type || 'Unknown'}</div>
                 </div>
                 <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-file-alt"></i> Content Type</span>
-                    <span class="detail-value">${subdomain.content_type || 'Unknown'}</span>
+                    <div class="detail-label">Response Time</div>
+                    <div class="detail-value">${result.response_time ? (result.response_time * 1000).toFixed(0) + 'ms' : 'N/A'}</div>
                 </div>
                 <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-heading"></i> Page Title</span>
-                    <span class="detail-value">${subdomain.title}</span>
+                    <div class="detail-label">Content Length</div>
+                    <div class="detail-value">${result.content_length ? result.content_length.toLocaleString() + ' bytes' : 'N/A'}</div>
                 </div>
                 <div class="detail-item">
-                    <span class="detail-label"><i class="fas fa-link"></i> Final URL</span>
-                    <span class="detail-value">${subdomain.final_url || subdomain.url}</span>
+                    <div class="detail-label">Final URL</div>
+                    <div class="detail-value">${result.final_url || result.url}</div>
                 </div>
             </div>
-            ${subdomain.ssl_info ? this.createSSLInfo(subdomain.ssl_info) : ''}
         `;
-        
-        return card;
-    }
 
-    createSSLInfo(sslInfo) {
-        if (!sslInfo || !sslInfo.subject) return '';
-        
-        return `
-            <div class="ssl-info">
-                <strong><i class="fas fa-lock"></i> SSL Certificate:</strong><br>
-                Subject: ${sslInfo.subject.commonName || 'N/A'}<br>
-                Issuer: ${sslInfo.issuer.organizationName || 'N/A'}<br>
-                Expires: ${sslInfo.not_after || 'N/A'}
-            </div>
-        `;
+        return card;
     }
 
     toggleFilters() {
         const filterSection = document.getElementById('filter-section');
-        const isVisible = filterSection.style.display !== 'none';
-        filterSection.style.display = isVisible ? 'none' : 'block';
+        filterSection.style.display = filterSection.style.display === 'none' ? 'block' : 'none';
     }
 
     applyFilters() {
-        const searchTerm = document.getElementById('search-filter').value.toLowerCase();
-        const statusFilter = document.getElementById('status-filter').value;
-        
-        this.filteredResults = this.currentResults.filter(subdomain => {
-            const matchesSearch = !searchTerm || 
-                subdomain.subdomain.toLowerCase().includes(searchTerm) ||
-                subdomain.title.toLowerCase().includes(searchTerm);
-            
-            const matchesStatus = !statusFilter || 
-                subdomain.status_code.toString() === statusFilter;
+        const searchTerm = document.getElementById('search-filter')?.value.toLowerCase() || '';
+        const statusFilter = document.getElementById('status-filter')?.value || '';
+
+        this.filteredResults = this.currentResults.filter(result => {
+            const matchesSearch = result.subdomain.toLowerCase().includes(searchTerm) ||
+                                (result.title && result.title.toLowerCase().includes(searchTerm));
+            const matchesStatus = !statusFilter || result.status_code.toString() === statusFilter;
             
             return matchesSearch && matchesStatus;
         });
-        
-        this.displayResults({
-            found_count: this.filteredResults.length,
-            subdomains: this.filteredResults
-        });
+
+        this.displayResults({ found_count: this.filteredResults.length });
     }
 
     sortResults() {
         const sortOptions = ['subdomain', 'status_code', 'response_time', 'content_length'];
-        const currentSort = this.currentSort || 'subdomain';
-        const nextSortIndex = (sortOptions.indexOf(currentSort) + 1) % sortOptions.length;
-        const nextSort = sortOptions[nextSortIndex];
-        
+        const currentIndex = sortOptions.indexOf(this.currentSort);
+        this.currentSort = sortOptions[(currentIndex + 1) % sortOptions.length];
+
         this.filteredResults.sort((a, b) => {
-            switch (nextSort) {
+            switch (this.currentSort) {
+                case 'subdomain':
+                    return a.subdomain.localeCompare(b.subdomain);
                 case 'status_code':
                     return a.status_code - b.status_code;
                 case 'response_time':
                     return (a.response_time || 0) - (b.response_time || 0);
                 case 'content_length':
-                    return b.content_length - a.content_length;
+                    return (a.content_length || 0) - (b.content_length || 0);
                 default:
-                    return a.subdomain.localeCompare(b.subdomain);
+                    return 0;
             }
         });
-        
-        this.currentSort = nextSort;
-        this.displayResults({
-            found_count: this.filteredResults.length,
-            subdomains: this.filteredResults
-        });
-        
-        this.showNotification(`Sorted by ${nextSort.replace('_', ' ')}`, 'info');
+
+        this.displayResults({ found_count: this.filteredResults.length });
+        this.showNotification(`Sorted by ${this.currentSort.replace('_', ' ')}`, 'info');
     }
 
-    showResultsSection() {
-        const resultsSection = document.getElementById('results-section');
-        resultsSection.style.display = 'block';
-        resultsSection.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    hideResultsSection() {
-        const resultsSection = document.getElementById('results-section');
-        resultsSection.style.display = 'none';
-    }
-
+    // FIXED EXPORT FUNCTIONALITY
     exportResults() {
-        if (this.filteredResults.length === 0) {
+        if (this.currentResults.length === 0) {
             this.showNotification('No results to export', 'error');
             return;
         }
 
-        const csvContent = this.generateAdvancedCSV(this.filteredResults);
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `advanced_subdomains_${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        this.showNotification(`📊 Exported ${this.filteredResults.length} results successfully!`, 'success');
+        try {
+            const csvContent = this.generateCSV(this.filteredResults);
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            // Create download link
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `subhunter-results-${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Clean up
+            URL.revokeObjectURL(url);
+            
+            this.showNotification(`Exported ${this.filteredResults.length} results successfully`, 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            this.showNotification('Export failed. Please try again.', 'error');
+        }
     }
 
-    generateAdvancedCSV(results) {
+    generateCSV(results) {
         const headers = [
-            'Subdomain', 'URL', 'Status Code', 'Response Time (ms)', 
-            'Content Length', 'Server', 'Content Type', 'Title', 'Final URL'
+            'Subdomain', 
+            'URL', 
+            'Status Code', 
+            'Title', 
+            'Server', 
+            'Content Type', 
+            'Response Time (ms)', 
+            'Content Length (bytes)',
+            'Final URL'
         ];
         
-        const rows = results.map(item => [
-            item.subdomain,
-            item.url,
-            item.status_code,
-            item.response_time ? (item.response_time * 1000).toFixed(0) : 'N/A',
-            item.content_length,
-            item.server,
-            item.content_type || 'Unknown',
-            `"${item.title.replace(/"/g, '""')}"`,
-            item.final_url || item.url
-        ]);
-        
-        return [headers, ...rows].map(row => row.join(',')).join('\n');
-    }
+        const csvRows = [headers.join(',')];
 
-    formatBytes(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
+        results.forEach(result => {
+            const row = [
+                `"${result.subdomain || ''}"`,
+                `"${result.url || ''}"`,
+                result.status_code || '',
+                `"${(result.title || '').replace(/"/g, '""')}"`,
+                `"${result.server || ''}"`,
+                `"${result.content_type || ''}"`,
+                result.response_time ? Math.round(result.response_time * 1000) : '',
+                result.content_length || '',
+                `"${result.final_url || result.url || ''}"`
+            ];
+            csvRows.push(row.join(','));
+        });
 
-    getNotificationIcon(type) {
-        const icons = {
-            success: 'check-circle',
-            error: 'exclamation-triangle',
-            info: 'info-circle',
-            warning: 'exclamation-circle'
-        };
-        return icons[type] || 'info-circle';
+        return csvRows.join('\n');
     }
 
     showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <i class="fas fa-${this.getNotificationIcon(type)}"></i>
-                <span>${message}</span>
-            </div>
-        `;
+        const container = document.getElementById('notification-container');
+        if (!container) {
+            console.log(`${type.toUpperCase()}: ${message}`);
+            return;
+        }
         
-        Object.assign(notification.style, {
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            padding: '1rem 1.5rem',
-            borderRadius: '12px',
-            color: '#ffffff',
-            fontWeight: '500',
-            zIndex: '9999',
-            opacity: '0',
-            transform: 'translateX(100%)',
-            transition: 'all 0.4s ease',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            maxWidth: '400px'
-        });
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
 
-        const colors = {
-            success: 'rgba(0, 255, 0, 0.9)',
-            error: 'rgba(255, 0, 0, 0.9)',
-            info: 'rgba(0, 255, 255, 0.9)',
-            warning: 'rgba(255, 255, 0, 0.9)'
-        };
-        notification.style.background = colors[type] || colors.info;
+        container.appendChild(notification);
 
-        document.body.appendChild(notification);
-
-        // Animate in
+        // Auto-remove after 5 seconds
         setTimeout(() => {
-            notification.style.opacity = '1';
-            notification.style.transform = 'translateX(0)';
-        }, 100);
-
-        // Remove after 4 seconds
-        setTimeout(() => {
-            notification.style.opacity = '0';
-            notification.style.transform = 'translateX(100%)';
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 400);
-        }, 4000);
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 5000);
     }
 }
 
-// Initialize the application when DOM is loaded
+// Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    new AdvancedSubdomainFinder();
+    window.subHunterPro = new SubHunterPro();
 });
