@@ -152,7 +152,6 @@ Live progress bar with percentage completion
 - 🚀 Implemented real-time progress tracking with live feed
 - 📊 Enhanced analytics dashboard with detailed metrics
 - 🎨 Redesigned UI with cyberpunk theme and animations
-- 📤 Multiple export formats (CSV, JSON, TXT)
 - 🔧 Advanced filtering and sorting capabilities
 - 🛡️ Enhanced security features and input validation
 - 📱 Improved mobile responsiveness
@@ -259,7 +258,7 @@ This tool is designed for legitimate security testing and research purposes only
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Adityakumar09/subhunter-pro&type=Date)](https://star-history.com/Adityakumar09/subhunter-pro&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Adityakumar09/subhunter&type=Date)](https://www.star-history.com/#Adityakumar09/subhunter&Date)
 
 ---
 
