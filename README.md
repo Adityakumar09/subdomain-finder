@@ -84,20 +84,20 @@
 ### Quick Installation
 
 1. **Clone Repository**
-*git clone https://github.com/Adityakumar09/subhunter-pro.git*
-*cd subhunter-pro*
+- *git clone https://github.com/Adityakumar09/subhunter-pro.git*
+- *cd subhunter-pro*
 
 
 2. **Install Dependencies**
-*pip install flask requests dnspython urllib3 concurrent.futures *
+- *pip install flask requests dnspython urllib3 concurrent.futures*
 
 
 3. **Launch Application**
-*python app.py*
+- *python app.py*
 
 
 4. **Access SubHunter Pro**
-*Open browser: http://localhost:5000*
+- *Open browser: http://localhost:5000*
 
 
 ---
