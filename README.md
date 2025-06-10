@@ -71,7 +71,6 @@
 - **Custom Wordlists** - Support for custom subdomain dictionaries
 
 ### 📤 **Enterprise Export & Reporting**
-- **Multiple Formats** - CSV, JSON, and TXT export options
 - **Detailed Reports** - Complete subdomain information with metadata
 - **Filtered Exports** - Export only filtered/sorted results
 - **Timestamp Tracking** - Automatic scan timestamp and duration recording
@@ -85,20 +84,20 @@
 ### Quick Installation
 
 1. **Clone Repository**
-git clone https://github.com/yourusername/subhunter-pro.git
-cd subhunter-pro
+*git clone https://github.com/Adityakumar09/subhunter-pro.git*
+*cd subhunter-pro*
 
 
 2. **Install Dependencies**
-pip install flask requests dnspython urllib3 concurrent.futures
+*pip install flask requests dnspython urllib3 concurrent.futures *
 
 
-4. **Launch Application**
-python app.py
+3. **Launch Application**
+*python app.py*
 
 
-5. **Access SubHunter Pro**
-Open browser: http://localhost:5000
+4. **Access SubHunter Pro**
+*Open browser: http://localhost:5000*
 
 
 ---
@@ -142,9 +141,6 @@ Live progress bar with percentage completion
 
 #### **Professional Export Options**
 📄 CSV Export: Spreadsheet-compatible format for analysis
-🔧 JSON Export: Machine-readable structured data
-📝 TXT Export: Human-readable plain text report
-⏰ Timestamped: All exports include scan metadata
 
 
 ---
@@ -263,7 +259,7 @@ This tool is designed for legitimate security testing and research purposes only
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/subhunter-pro&type=Date)](https://star-history.com/#yourusername/subhunter-pro&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Adityakumar09/subhunter-pro&type=Date)](https://star-history.com/Adityakumar09/subhunter-pro&Date)
 
 ---
 
