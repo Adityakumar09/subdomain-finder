@@ -84,9 +84,15 @@ class SubHunterPro {
         }
 
         this.isScanning = true;
+        this.scanStartTime = Date.now();
+        this.scannedDomains = 0;
+        this.foundDomains = 0;
+
         this.updateScanButton(true);
         this.showStatsSection();
         this.showProgressSection();
+        this.hideResultsSection();
+        this.clearLiveFeed();
 
         try {
             const response = await fetch('/scan', {
@@ -105,8 +111,30 @@ class SubHunterPro {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            const data = await response.json();
-            this.handleScanComplete(data);
+            // Handle streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            this.handleStreamingUpdate(data);
+                        } catch (e) {
+                            console.error('Error parsing JSON:', e);
+                        }
+                    }
+                }
+            }
 
         } catch (error) {
             console.error('Scan error:', error);
@@ -117,7 +145,6 @@ class SubHunterPro {
             this.hideProgressSection();
         }
     }
-
 
     handleStreamingUpdate(data) {
         if (data.type === 'progress') {
